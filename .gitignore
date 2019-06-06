@@ -51,6 +51,7 @@ Thumbs.db
 # Document files #
 ######################
 *.tex
+*.bib
 *.png
 
 # Python #

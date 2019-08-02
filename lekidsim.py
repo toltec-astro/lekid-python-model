@@ -39,8 +39,8 @@ class lekid(object):
                  
 #                 Nsq = 5333.33, # Number of squares 
 #                 Lk_tot = 9.86e-9, # Total Kinetic Inductance (Henry)
-#                 f_read = 1e9, # Hertz: READOUT frequency of circuit
-#                 Z_line = 50.0, # Transmission line impedence (Ohms)
+                 f_read = 1e9, # Hertz: READOUT frequency of circuit
+                 Z_line = 50.0, # Transmission line impedence (Ohms)
 #                 alpha = 0.123, # effective kinetic inductance fraction (?)
                  P_read = 6.31e-12, # Readout Power (Watts)
                  T_amp = 3.0, # Amplifier Noise Temperature (Kelvin)
@@ -76,8 +76,8 @@ class lekid(object):
         
 #        self.Lk_tot = Lk_tot
 #        self.alpha = alpha
-#        self.f_read = f_read
-#        self.Z_line = Z_line
+        self.f_read = f_read
+        self.Z_line = Z_line
         self.P_read = P_read
         self.T_amp = T_amp
         self.deltav_read = deltav_read
@@ -132,7 +132,7 @@ class lekid(object):
         Return the gap energy at 0K.
         Inputs: none
         """
-        return 1.764*const.k*self.Tc# joule
+        return 1.764*const.k*self.Tc# Joule
     
     @property
     def delta(self):#I've been using delta0 and delta interchangeably
@@ -185,15 +185,15 @@ class lekid(object):
     
     # thermal: depends on self.T
     @property
-    def n_qp_therm(self):# differ from n_qp_ss by F
+    def n_qp_therm(self):# TODO: change approximation to K?
         """
-        Return the density of quasiparticles arising due to thermal effects at temperature of resonator.
+        Return the density of quasiparticles arising due to thermal effects at temperature of resonator. Differs from n_qp_ss by phonon trapping factor F_phon.
         Inputs: none
         """
         return 2*self.N0*np.sqrt(2*np.pi*const.k*self.T*self.delta0)*np.exp(-self.delta0/(const.k*self.T))# metre^-3
     
     @property
-    def gamma_G(self):
+    def gamma_G(self):# TODO: change approximation to K?
         """
         Return the low-temperature thermal generation rate at temperature of resonator.
         Inputs: none
@@ -241,7 +241,7 @@ class lekid(object):
         Return the steady-state quasiparticle density.
         Inputs: none
         """
-        return np.sqrt(self.gamma_G()/self.R_eff())# metre^-3
+        return np.sqrt(self.gamma_G/self.R_eff)# metre^-3
         #return self.nqp0# metre^-3
     
     @property
@@ -250,10 +250,10 @@ class lekid(object):
         Return the total NUMBER of quasiparticles in resonator in steady-state.
         Inputs: none
         """
-        return np.sqrt(self.VI*self.gamma_G/self.R_eff)
+        return self.VI*np.sqrt(self.gamma_G/self.R_eff)
 
     # optical: depends on optical power
-    def gamma_opt(self, P_opt=0):
+    def gamma_opt(self, P_opt=0):#TODO: is this specific?
         """
         Return the BACKGROUND optical power quasiparticle generation rate.
         Inputs: P_opt (Watts: Optical Power (about 1e-11))
@@ -266,7 +266,7 @@ class lekid(object):
         Return the total NUMBER of quasiparticles in resonator due to thermal and BACKGROUND optical power effects.
         Inputs: P_opt (Watts: Optical Power (about 1e-11))
         """
-        return np.sqrt(self.VI*(self.gamma_G +self.gamma_opt(P_opt=P_opt))/self.R_eff)# metre^-3
+        return self.VI*np.sqrt((self.gamma_G +self.gamma_opt(P_opt=P_opt))/self.R_eff)# metre^-3
     
     # conductivity
     def sigma1_0(self, f):
@@ -283,21 +283,19 @@ class lekid(object):
         """
         return np.pi*self.delta0*self.sigma_n/(f*const.h)# ohms?
 
-    @property
-    def sigma1rat(self):
+    def sigma1rat(self, f):
         """
         Return the ratio of the real part of complex conductivity to quasiparticle density response at temperature of resonator. (used in responsivity)
-        Inputs: none
+        Inputs: f (Hz: frequency)
         """
-        return (8*self.delta0/(np.pi**3*const.k*self.T))**(0.5)*np.sinh(const.h*self.nu_opt/(2*const.k*self.T))*scipy.special.kv(0, const.h*self.nu_opt/(2*const.k*self.T))
+        return (8*self.delta0/(np.pi**3*const.k*self.T))**(0.5)*np.sinh(const.h*f/(2*const.k*self.T))*scipy.special.kv(0, const.h*f/(2*const.k*self.T))
     
-    @property
-    def sigma2rat(self):
+    def sigma2rat(self, f):
         """
         Return the ratio of the imag part of complex conductivity to quasiparticle density response at temperature of resonator. (used in responsivity)
-        Inputs: none
+        Inputs: f (Hz: frequency)
         """
-        return -1 -(2*self.delta0/(np.pi*const.k*self.T))**(0.5)*np.exp(-const.h*self.nu_opt/(2*const.k*self.T))*scipy.special.iv(0, const.h*self.nu_opt/(2*const.k*self.T))
+        return -1 -(2*self.delta0/(np.pi*const.k*self.T))**(0.5)*np.exp(-const.h*f/(2*const.k*self.T))*scipy.special.iv(0, const.h*f/(2*const.k*self.T))
 
     def sigma1(self, f, P_opt=0):
         """
@@ -372,12 +370,12 @@ class lekid(object):
         """
         return self.nsq*const.h/(2*np.pi**2*self.tI*self.delta0*self.sigma_n)# henry?
     
-    def Lk(self, P_opt=0):
+    def Lk(self, f, P_opt=0):
         """
         Return the kinetic inductance in thin film local limit. (redundant)
-        Inputs: P_opt (Watts: Optical Power (about 1e-11))
+        Inputs:  f (Hz: frequency), P_opt (Watts: Optical Power (about 1e-11))
         """
-        return self.Lk_0*(2*self.N0*self.delta0*self.VI/(2*self.N0*self.delta0*self.VI +self.N_qp_tot(P_opt=P_opt)*self.sigma2rat))# henry?
+        return self.Lk_0*(2*self.N0*self.delta0*self.VI/(2*self.N0*self.delta0*self.VI +self.N_qp_tot(P_opt=P_opt)*self.sigma2rat(f)))# henry?
     
     # resonance frequency
     @property
@@ -418,26 +416,26 @@ class lekid(object):
         """
         return 1/(2*np.pi*np.sqrt(self.C*(self.Lk_0+self.Lg)))# hertz
     
-    def ffrac(self, P_opt=0):
+    def ffrac(self, f, P_opt=0):
         """
         Return the fractional frequency shift in resonant frequency of the resonator circuit in thin film local limit.
-        Inputs: P_opt (Watts: Optical Power (about 1e-11))
+        Inputs: f (Hz: frequency), P_opt (Watts: Optical Power (about 1e-11))
         """
-        return self.alpha*(self.Lk(P_opt=P_opt) -self.Lk_0)/(2*self.Lk_0)
+        return self.alpha*(self.Lk(f, P_opt=P_opt) -self.Lk_0)/(2*self.Lk_0)
     
-    def fnew(self, P_opt=0):
+    def fnew(self, f, P_opt=0):
         """
         Return the new resonant frequency of the resonator circuit in thin film local limit.
-        Inputs: P_opt (Watts: Optical Power (about 1e-11))
+        Inputs: f (Hz: frequency), P_opt (Watts: Optical Power (about 1e-11))
         """
-        return self.f0*(1 -self.ffrac(P_opt=P_opt))
+        return self.f0*(1 -self.ffrac(f, P_opt=P_opt))
     
     def fdet(self, f, P_opt=0):
         """
         Return the fractional frequency detuning in resonant frequency of the resonator circuit in thin film local limit.
         Inputs: f (Hz: frequency), P_opt (Watts: Optical Power (about 1e-11))
         """
-        return f/self.fnew(P_opt=P_opt) - 1
+        return f/self.fnew(f, P_opt=P_opt) - 1
     
     # quality factor
     def Q_qp(self, f, P_opt=0):#TODO: Q_qp = Q_i?
@@ -483,14 +481,14 @@ class lekid(object):
         Return the responsivity of sigma1 to N_qp_tot. Uses sigma1rat and used in calculation of sigma1.
         Inputs: f (Hz: frequency)
         """
-        return self.sigma2_0(f)*self.sigma1rat/(2*self.N0*self.delta0*self.VI)
+        return self.sigma2_0(f)*self.sigma1rat(f)/(2*self.N0*self.delta0*self.VI)
     
     def dsig2_dN(self, f):
         """
         Return the responsivity of sigma2 to N_qp_tot. Uses sigma2rat and used in calculation of sigma2.
         Inputs: f (Hz: frequency)
         """
-        return self.sigma2_0(f)*self.sigma2rat/(2*self.N0*self.delta0*self.VI)
+        return self.sigma2_0(f)*self.sigma2rat(f)/(2*self.N0*self.delta0*self.VI)
     
     def dRs_dsig1(self, f):
         """
@@ -542,12 +540,12 @@ class lekid(object):
         return self.dQqp_dRs(f)*self.dRs_dsig1(f)*self.dsig1_dN(f)*self.dN_qp_tot_dGamma(P_opt=P_opt)*self.dGamma_dP*self.dPabs_dPinc
     
     # s21
-    def S21(self, f, A=0, P_opt=0):#TODO: rewrite?
+    def S21(self, f, P_opt=0):#TODO: rewrite?
         """
         Return the resonator quality factor of the resonator circuit in thin film local limit.
         Inputs: f (Hz: frequency), P_opt (Watts: Optical Power (about 1e-11))
         """
-        return 1 -(self.Qr(f, P_opt=P_opt)*(1+1j*A))/(self.Qc*(1+2j*self.Qr(f, P_opt=P_opt)*self.fdet(f, P_opt=P_opt)))
+        return 1 -self.Qr(f, P_opt=P_opt)/(self.Qc*(1+2j*self.Qr(f, P_opt=P_opt)*self.fdet(f, P_opt=P_opt)))
     
     # noise
     def nep_phot(self, P_opt=0):
@@ -581,95 +579,3 @@ class lekid(object):
         Nqp=-2*self.N0*self.delta0*self.VI*(1 +self.Lk_0/Lk)/self.sigma2rat
         return (Nqp**2*self.R_eff/self.VI -self.gamma_G)*self.delta/(self.eta_pb*self.dPabs_dPinc)
     
-
-    
-"""
-# fitting S21 curves
-import lmfit
-
-#Utilities
-def rotateIQ(I, Q):
-    phi_rotate = calcPhase(I,Q)
-    phi_rotate = np.median(phi_rotate)
-    S21 = I + 1j*Q
-    S21_rot = S21*np.exp(-1j*phi_rotate)
-    I = np.real(S21_rot)
-    Q = np.imag(S21_rot)
-    return I, Q
-
-def calcPhase(I, Q):
-    phase = np.arctan2(Q, I)
-    phase = correctRollover(phase, -np.pi/2., 0.9*np.pi, 2.*np.pi)
-    return phase
-
-def correctRollover(sig, low, high, ulim):
-    mx = sig.max()
-    mn = sig.min()
-    if(mx>high and mn<low):
-        w = np.where(sig < low)[0]
-        sig[w] += ulim
-    return sig
-
-
-#resonance model
-#following Eq 3.60 from Flanigan thesis
-#note: needed to add linear slope fit to I and Q to fit resonances well.
-def S21(p, freq):
-    Qr = p[0]# empirical
-#    Qc = p[1]# _should_ be constant
-    tau0=p[1]
-    C=p[2]
-#    fr = p[2]# empirical
-    A = p[3]# assymetry factor
-    norm = p[4]
-    slopeI = p[5]
-    slopeQ = p[6]
-    kid=lekid(tau0=tau0, C=C)
-#    num = Qr/Qc * (1.+1.j*A)
-#    den = 1.+2.j*Qr*(freq-fr)/fr
-#    return norm*(1.-num/den) + slopeI*freq + 1.j*slopeQ*freq
-    return norm*(1 -(Qr*(1+1j*A))/(kid.Qc*(1+2j*Qr*kid.fdet(freq)))) +slopeI*freq +1j*slopeQ*freq# using fdet to approximate ffrac
-
-#residual function for fitting
-def resid(p, f, mag, phase):
-    p = np.array([p['Qr'].value,p['tau0'].value, \
-                  p['C'].value,p['A'].value, \
-                  p['norm'].value, \
-                  p['slopeI'].value, p['slopeQ'].value])
-    s21 = S21(p,f)
-    s21mag = np.abs(s21)
-    s21phase = calcPhase(s21.real, s21.imag)
-    res = np.append(s21mag-mag, s21phase-phase)
-    return res
-
-a = lekid()
-freq = np.linspace(5e8, 1e9, 10001)
-popt=np.array([0, 2e-12, 4e-12, 6e-12, 8e-12, 1e-11])
-qr=np.zeros_like(popt)
-tau0n=np.zeros_like(popt)
-cn=np.zeros_like(popt)
-aarray=np.zeros_like(popt)
-norms=np.zeros_like(popt)
-slopeIs=np.zeros_like(popt)
-slopeQs=np.zeros_like(popt)
-
-for i in range(popt.shape[0]):
-    params = lmfit.Parameters()
-    params.add('Qr', value=a.Qr(popt[i]))
-    params.add('tau0', value=a.Qc)
-    params.add('C', value=a.fnew(popt[i]))
-    params.add('A', value=0.)
-    params.add('norm', value=np.abs(a.S21(freq, P_opt=popt[i])).max())
-    params.add('slopeI', value=0.)
-    params.add('slopeQ', value=0.)
-    minner = lmfit.Minimizer(resid,params,fcn_args=(freq, np.abs(a.S21(freq, P_opt=popt[i])), calcPhase(a.S21(freq, P_opt=popt[i]).real, a.S21(freq, P_opt=popt[i]).imag)))
-    r = minner.minimize()
-    p = np.array([r.params['Qr'].value,r.params['tau0'].value, r.params['C'].value,r.params['A'].value, r.params['norm'].value, r.params['slopeI'].value, r.params['slopeQ'].value])
-    qr[i]=p[0]
-    tau0n[i]=p[1]
-    cn[i]=p[2]
-    aarray[i]=p[3]
-    norms[i]=p[4]
-    slopeIs[i]=p[5]
-    slopeQs[i]=p[6]
-"""

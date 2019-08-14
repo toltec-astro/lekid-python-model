@@ -23,7 +23,7 @@ class lekid(object):
                  tI = 1.8e-8, # metre: Inductor thickness
 #                 lambL = 5e-8, # metre: penetration depth of Al
                  Tc = 1.4, # Kelvin: critical temperature
-                 tau0 = 2e-1, #4.38e-7, # second: characteristic electron-phonon interaction time of Al
+                 tau0 = 1e-9, #4.38e-7, # second: characteristic electron-phonon interaction time of Al
                  T = 0.1, # Kelvin: Temperature of the LeKID
                  R_nsq = 9e1,#1.7536e4, # Ohms per square: normal sheet resistivity just above Tc
                  lamb = 1.1e-3, # metre: optical wavelength
@@ -34,9 +34,10 @@ class lekid(object):
                  eta_pb = 0.57, # pair-breaking efficiency
                  tau_phon_br = 1e-10, # seconds: time for phonon of sufficient energy to break Cooper pair of Al
                  Qc = 5e4, # coupling quality factor
+                 Ql = 2e4, # loss quality factor
 #                 Lksq = 9e-11, # sheet kinetic inductance per square (Henry/square)
-                 nqp0 = 1e20,#1e12, density of quasiparticles at zero temperature (particles/meter^3) # arising from readout?
-                 
+#                 nqp0 = 1e20,# m^-3: baseline unloaded quasiparticle density of TiN
+                 N0 = 8.277e+46,# per Joule per metre cubed: single-spin density of electron states of TiN at Fermi energy
 #                 Nsq = 5333.33, # Number of squares 
 #                 Lk_tot = 9.86e-9, # Total Kinetic Inductance (Henry)
                  f_read = 1e9, # Hertz: READOUT frequency of circuit
@@ -63,8 +64,8 @@ class lekid(object):
 #        self.delta = self.delta0*(1-np.sqrt(2*const.pi*const.k*self.delta0*self.T)*np.exp(-self.delta0/(const.k*self.T)))# Joule: gap energy at T (identical to delta0)#NOTE: I've been using delta0 and delta interchangeably
 #        self.sigma_n = sigma_nsq/self.tI# siemens per metre: normal conductivity just above Tc (5e9)
 #        self.lambL = const.hbar/(const.pi*const.mu_0*self.tI*self.delta*self.sigma_n)#lambL# metre: penetration depth
-        self.nqp0 = nqp0# from Jay: baseline unloaded QP density, assumed from literature
-#        self.N0 = nqp0/(np.sqrt(8*np.pi*const.k*self.T*self.delta0)*np.exp(-self.delta0/(const.k*self.T)))# per Joule per metre cubed: single-spin density of electron states at Fermi energy, from n_qp_ss=1e20, setting F_phon=1
+#        self.nqp0 = nqp0# from Jay: baseline unloaded QP density, assumed from literature
+        self.N0 = N0# per Joule per metre cubed: single-spin density of electron states at Fermi energy
         self.Lg = Lg
         self.C = C
         self.eta_opt = eta_opt
@@ -72,6 +73,7 @@ class lekid(object):
 #        self.N_qp_photon = self.eta_pb*const.h*self.nu_opt/self.delta#N_qp_photon# Number of quasi particles produced per photon
         self.tau_phon_br = tau_phon_br
         self.Qc = Qc
+        self.Ql = Ql
 #        self.Lksq = Lksq
         
 #        self.Lk_tot = Lk_tot
@@ -151,20 +153,20 @@ class lekid(object):
         return 1/(self.R_nsq*self.tI)# siemens per metre
     
     @property
-    def lambL(self):# TODO: seems to be fixed?
+    def lambL(self):
         """
         Return the penetration depth in the thin film limit.
         Inputs: none
         """
         return const.hbar/(const.pi*const.mu_0*self.tI*self.delta*self.sigma_n)# metre
     
-    @property
-    def N0(self):
-        """
-        Return the single-spin density of electron states at Fermi energy. (from n_qp_ss=1e20, setting F_phon=1)
-        Inputs: none
-        """
-        return self.nqp0/(2*np.sqrt(2*np.pi*const.k*self.T*self.delta0)*np.exp(-self.delta0/(const.k*self.T)))# per joule per metre^3
+#    @property
+#    def N0(self):
+#        """
+#        Return the single-spin density of electron states at Fermi energy. (from n_qp_ss=1e20, setting F_phon=1)
+#        Inputs: none
+#        """
+#        return self.nqp0/(2*np.sqrt(2*np.pi*const.k*self.T*self.delta0)*np.exp(-self.delta0/(const.k*self.T)))# per joule per metre^3
     
     @property
     def N_qp_photon(self):
@@ -236,7 +238,7 @@ class lekid(object):
         return (4*self.R_eff*self.gamma_G)**(-0.5)# second
     
     @property
-    def n_qp_ss(self):#TODO: 1 order of magnitude off?
+    def n_qp_ss(self):
         """
         Return the steady-state quasiparticle density.
         Inputs: none
@@ -253,12 +255,12 @@ class lekid(object):
         return self.VI*np.sqrt(self.gamma_G/self.R_eff)
 
     # optical: depends on optical power
-    def gamma_opt(self, P_opt=0):#TODO: is this specific?
+    def Gamma_opt(self, P_opt=0):
         """
-        Return the BACKGROUND optical power quasiparticle generation rate.
+        Return the background optical power quasiparticle generation rate. CURRENTLY ASSUMES OPTICAL EFFICIENCY ACCOUNTED FOR.#TODO: FIX FOR ACTUAL MODELLING
         Inputs: P_opt (Watts: Optical Power (about 1e-11))
         """
-        return self.dPabs_dPinc*P_opt*self.eta_pb/self.delta
+        return P_opt*self.eta_pb/self.delta#*self.dPabs_dPinc 
     
     # all together now
     def N_qp_tot(self, P_opt=0):
@@ -266,7 +268,7 @@ class lekid(object):
         Return the total NUMBER of quasiparticles in resonator due to thermal and BACKGROUND optical power effects.
         Inputs: P_opt (Watts: Optical Power (about 1e-11))
         """
-        return self.VI*np.sqrt((self.gamma_G +self.gamma_opt(P_opt=P_opt))/self.R_eff)# metre^-3
+        return np.sqrt((self.VI**2*self.gamma_G +self.VI*self.Gamma_opt(P_opt=P_opt))/self.R_eff)# metre^-3
     
     # conductivity
     def sigma1_0(self, f):
@@ -450,7 +452,7 @@ class lekid(object):
         Return the resonator quality factor of the resonator circuit in thin film local limit.
         Inputs: f (Hz: frequency), P_opt (Watts: Optical Power (about 1e-11))
         """
-        return 1/(1/self.Qc +1/self.Q_qp(f, P_opt=P_opt))
+        return 1/(1/self.Qc +1/self.Ql +1/self.Q_qp(f, P_opt=P_opt))
 
     # responsivity
     @property
@@ -467,14 +469,14 @@ class lekid(object):
         Returns responsivity of quasiparticle generation rate to optical power.
         Inputs: none
         """
-        return self.eta_pb/self.delta0
+        return self.eta_pb/(self.delta0)
 
     def dN_qp_tot_dGamma(self, P_opt=0):
         """
         Returns responsivity of N_qp_tot to quasiparticle generation rate.
         Inputs: P_opt (Watts: Optical Power (about 1e-11))
         """
-        return np.sqrt(self.VI/((self.gamma_G+self.gamma_opt(P_opt=P_opt))*self.R_eff))/2
+        return 0.5*np.sqrt(1/((self.gamma_G+(self.Gamma_opt(P_opt=P_opt)/self.VI))*self.R_eff))
     
     def dsig1_dN(self, f):
         """

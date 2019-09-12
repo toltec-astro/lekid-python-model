@@ -23,18 +23,18 @@ class lekid(object):
                  tI = 1.8e-8, # metre: Inductor thickness
 #                 lambL = 5e-8, # metre: penetration depth of Al
                  Tc = 1.4, # Kelvin: critical temperature
-                 tau0 = 1e-9, #4.38e-7, # second: characteristic electron-phonon interaction time of Al
                  T = 0.1, # Kelvin: Temperature of the LeKID
+#                 tau0 = 1e-9, #4.38e-7, # second: characteristic electron-phonon interaction time of Al
                  R_nsq = 9e1,#1.7536e4, # Ohms per square: normal sheet resistivity just above Tc
                  lamb = 1.1e-3, # metre: optical wavelength
                  delta_nuopt = 1.0e10, #4e11, Optical Bandwidth (Hertz) #thereabouts
                  Lg = 3e-9, # henry: geometric inductance #TODO: derivable?
-                 C = 5e-12, # farads: capacitance
+                 C = 5e-12, # farads: capacitance# fudge
                  eta_opt = 0.8, # optical efficiency   
                  eta_pb = 0.57, # pair-breaking efficiency
                  tau_phon_br = 1e-10, # seconds: time for phonon of sufficient energy to break Cooper pair of Al
                  Qc = 5e4, # coupling quality factor
-                 Ql = 2e4, # loss quality factor
+                 Ql = 1e7, # loss quality factor
 #                 Lksq = 9e-11, # sheet kinetic inductance per square (Henry/square)
 #                 nqp0 = 1e20,# m^-3: baseline unloaded quasiparticle density of TiN
                  N0 = 8.277e+46,# per Joule per metre cubed: single-spin density of electron states of TiN at Fermi energy
@@ -53,8 +53,8 @@ class lekid(object):
         self.tI = tI
 #        self.VI = self.wI*self.lI*self.tI# metre^3: sheet volume
         self.Tc = Tc
-        self.tau0 = tau0
         self.T = T
+#        self.tau0 = 4.07e-7*self.T**3#tau0
         self.R_nsq = R_nsq
         self.lamb = lamb
 #        self.nu_opt = const.c/self.lamb# Hertz: Optical frequency
@@ -127,6 +127,14 @@ class lekid(object):
 #        """
 #        Lk_0=1/(4*np.pi**2*self.C*2.5e17) -self.Lg
 #        return 1/(2*np.pi*np.sqrt(self.C*(Lk_0+self.Lg)))# hertz
+    
+    @property
+    def tau0(self):
+        """
+        Return the electron-phonon interaction time.
+        Inputs: none
+        """
+        return 4.07e-7*self.T**3# seconds
     
     @property
     def delta0(self):
@@ -440,7 +448,7 @@ class lekid(object):
         return f/self.fnew(f, P_opt=P_opt) - 1
     
     # quality factor
-    def Q_qp(self, f, P_opt=0):#TODO: Q_qp = Q_i?
+    def Q_qp(self, f, P_opt=0):
         """
         Return the quality factor of the resonator circuit in thin film local limit arising from quasiparticles.
         Inputs: f (Hz: frequency), P_opt (Watts: Optical Power (about 1e-11))
@@ -527,14 +535,14 @@ class lekid(object):
         """
         return -self.Q_qp(f, P_opt=P_opt)**2*self.alpha/self.Xs_0(f)
 
-    def dx_dP(self, f, P_opt=0):
+    def dx_dP(self, f, P_opt=0):#TODO: check this it's wrong
         """
         Return the responsivity of frequency detuning x to optical power.
         Inputs: f (Hz: frequency), P_opt (Watts: Optical Power (about 1e-11))
         """
         return self.dx_dXs(f)*self.dXs_dsig2(f)*self.dsig2_dN(f)*self.dN_qp_tot_dGamma(P_opt=P_opt)*self.dGamma_dP*self.dPabs_dPinc
     
-    def dQqp_dP(self, f, P_opt=0):
+    def dQqp_dP(self, f, P_opt=0):#TODO: check this
         """
         Return the responsivity of quasiparticle quality factor Q_qp to optical power.
         Inputs: f (Hz: frequency), P_opt (Watts: Optical Power (about 1e-11))
@@ -542,7 +550,7 @@ class lekid(object):
         return self.dQqp_dRs(f)*self.dRs_dsig1(f)*self.dsig1_dN(f)*self.dN_qp_tot_dGamma(P_opt=P_opt)*self.dGamma_dP*self.dPabs_dPinc
     
     # s21
-    def S21(self, f, P_opt=0):#TODO: rewrite?
+    def S21(self, f, P_opt=0):
         """
         Return the resonator quality factor of the resonator circuit in thin film local limit.
         Inputs: f (Hz: frequency), P_opt (Watts: Optical Power (about 1e-11))
@@ -564,20 +572,15 @@ class lekid(object):
         """
         return 2*np.sqrt(self.delta0*P_opt/(self.eta_pb*self.eta_opt))
     
-#    def nep_tls(self, P_opt=0):
-#        """
-#        Return the noise equivalent power (NEP/W/sqrt(Hz)) of 2-level system noise.
-#        Inputs: P_opt (Watts: Optical Power (about 1e-11))
-#        """
-#        return np.sqrt(2.*const.h*self.nu_opt()*P_opt + (P_opt**2)/(self.delta_nuopt))
-    
     # finding P_opt from fnew
-    def P_opt_r(self, fnew):#TODO: REWRITE
+    def P_opt_r(self, f, fnew):
         """
         Return P_opt value from fnew.
-        Inputs: fnew
+        Inputs: f (Hz: probe tone frequency), fnew (Hz: new resonant frequency)
         """
-        Lk=2*(self.Lg +self.Lk_0)*(1 -2*np.pi*fnew*np.sqrt(self.C*(self.Lg +self.Lk_0))) +self.Lk_0
-        Nqp=-2*self.N0*self.delta0*self.VI*(1 +self.Lk_0/Lk)/self.sigma2rat
-        return (Nqp**2*self.R_eff/self.VI -self.gamma_G)*self.delta/(self.eta_pb*self.dPabs_dPinc)
+        Lk = 2*self.Lg*(1 -fnew/self.f0) +self.Lk_0*(3 -2*fnew/self.f0)
+        Nqp = -2*self.N0*self.delta0*self.VI*(self.Lk_0/Lk -1)/self.sigma2rat(f)
+        Gopt = Nqp**2*self.R_eff/self.VI -self.VI*self.gamma_G
+        Popt = Gopt*self.delta/self.eta_pb#/self.dPabs_dPinc
+        return Popt
     

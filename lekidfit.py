@@ -14,6 +14,24 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 from lekidsim import lekid
 
+# fun plotting stuff
+import matplotlib as mpl
+
+Temps = np.linspace(0.05, 0.25, 9)
+norm = mpl.colors.Normalize(vmin=Temps.min(), vmax=Temps.max())
+cmap = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.plasma)
+cmap.set_array([])
+
+Freqs=np.linspace(6.5345e8, 6.536e8, 601)
+fig, ax = plt.subplots()
+for T in Temps:
+    ax.plot(Freqs, 20*np.log(np.abs(lekid(T=T, Ql=1e7).S21(Freqs))**2), c=cmap.to_rgba(T), label=T)
+ax.set_xlabel('f/Hz')
+ax.set_ylabel('abs(S21)^2/dB')
+ax.set_title('abs(S21)^2 vs. f')
+#fig.legend()
+fig.colorbar(cmap)
+
 #Utilities
 def rotateIQ(I, Q):
     phi_rotate = calcPhase(I,Q)
@@ -366,4 +384,127 @@ for i in range(np.unique(nc.variables['Data.Toltec.SweepFreq'][:].data).shape[0]
     stdI,stdQ = I.std(axis=1), Q.std(axis=1)
     params = s21model.make_params(Qr=3e4, C=5e-12, A=0)
 """
-    
+ 
+# data from model fitting
+import glob
+network=0
+datadir='data/'
+files=glob.glob(datadir+'toltec'+str(network)+'_00_0000_005*.txt')
+files.sort()
+#obsnum=np.array([int(f[15:19]) for f in files])
+res={}
+for f in files:
+    res[int(f[15:19])] = np.genfromtxt(f)
+
+#ncfiles=glob.glob(datadir+'toltec'+str(network)+'*.nc')
+#ncfiles.sort()
+
+therm = netCDF4.Dataset(datadir+'thermetry_2019-08-02_000001_00_1564749944.nc')
+
+obsutime = {5716:1565635131, 5717:1565640308, 5720:1565641631, 5723:1565642956, 5726:1565644278, 5729:1565645606, 5732:1565646924, 5735:1565648240, 5738:1565651268}
+
+obstemp = np.array([[5716,therm.variables['Data.ToltecThermetry.Temperature3'][:].data[np.where(therm.variables['Data.ToltecThermetry.Time3'][:].data>=1565635131)[0][0]]], [5717,therm.variables['Data.ToltecThermetry.Temperature3'][:].data[np.where(therm.variables['Data.ToltecThermetry.Time3'][:].data>=1565640308)[0][0]]], [5720,therm.variables['Data.ToltecThermetry.Temperature3'][:].data[np.where(therm.variables['Data.ToltecThermetry.Time3'][:].data>=1565641631)[0][0]]], [5723,therm.variables['Data.ToltecThermetry.Temperature3'][:].data[np.where(therm.variables['Data.ToltecThermetry.Time3'][:].data>=1565642956)[0][0]]], [5726,therm.variables['Data.ToltecThermetry.Temperature3'][:].data[np.where(therm.variables['Data.ToltecThermetry.Time3'][:].data>=1565644278)[0][0]]], [5729,therm.variables['Data.ToltecThermetry.Temperature3'][:].data[np.where(therm.variables['Data.ToltecThermetry.Time3'][:].data>=1565645606)[0][0]]], [5732,therm.variables['Data.ToltecThermetry.Temperature3'][:].data[np.where(therm.variables['Data.ToltecThermetry.Time3'][:].data>=1565646924)[0][0]]], [5735,therm.variables['Data.ToltecThermetry.Temperature3'][:].data[np.where(therm.variables['Data.ToltecThermetry.Time3'][:].data>=1565648240)[0][0]]], [5738,therm.variables['Data.ToltecThermetry.Temperature3'][:].data[np.where(therm.variables['Data.ToltecThermetry.Time3'][:].data>=1565651268)[0][0]]]])
+obstemp = obstemp[np.argsort(obstemp[:,1])]
+
+res={}
+for o in obsnum:
+    for n in network:
+        filename=glob.glob(datadir+'toltec'+str(n)+'_00'+str(o)+'_00_0000_*_vnasweep.txt')[0]
+        res['{}_{}'.format(o,n)] = np.genfromtxt(filename)
+
+dxdT = np.array([])# Hz/W: estimate from data
+fbin = 5e4# Hz: freq bin (on each side)
+n0vals=[]
+for n in network:
+    kids = np.zeros((res['{}_{}'.format(obsnum[0], n)].shape[0], 5))
+    #qrdat = np.zeros_like(kids)
+    for i in range(obsnum.shape[0]):
+        file = res['{}_{}'.format(obsnum[i], n)]
+        predictkids = res['{}_{}'.format(obsnum[0], n)][:,6] +dxdT*(Pbb[0] -Pbb[i])*res['{}_{}'.format(obsnum[0], n)][:,6]
+        for j in range(predictkids.shape[0]):
+            w = np.where(np.abs(file[:,6] -predictkids[j])<fbin)[0]
+            if(w.shape[0]==0):# not found
+                kids[j][i] = -1.
+                #qrdat[j][i] = -1.
+            if(w.shape[0]==1):
+                kids[j][i] = file[w[0],6]
+                #qrdat[j][i] = file[w[0],4]
+            if(w.shape[0]>1):# multiples
+                kids[j][i] = -2.
+                #qrdat[j][i] = -2.
+
+# blackbody tests
+Tc = np.array([5.7, 7.3, 9.57, 11.45, 13.33])# K: temp at centre of blackbody
+Th = np.array([6.3, 8.0, 10.63, 12.88, 15.24])# K: temp at edge of blackbody
+Tbb=0.5*(Th+Tc)# K: average temp of blackbody
+tbbcal = np.array([6.5, 8., 10., 12., 14., 16.])# K: blackbody calibration temps?
+pbbcal = np.array([2.e-12, 3.e-12, 4.73e-12, 6.5e-12, 8.25e-12, 10.1e-12]) # W: blackbody calibration power?
+Pc = np.interp(Tc,tbbcal,pbbcal)
+Ph = np.interp(Th,tbbcal,pbbcal)
+Pbb = 0.5*(Ph+Pc)# W: average power from blackbody
+
+#network=0# try other networks!
+network = np.array([0,2,4])
+obsnum = np.array([1133, 1137, 1142, 1147, 1158])
+#datadir = 'cdl:/lab/face/data_toltec/clipa/clip/'
+datadir = 'data/'
+#filename=glob.glob(datadir+'toltec'+str(network)+'_00'+str(obsnum[0])+'_00_0000_*_vnasweep.txt')[0]
+
+res={}
+for o in obsnum:
+    for n in network:
+        filename=glob.glob(datadir+'toltec'+str(n)+'_00'+str(o)+'_00_0000_*_vnasweep.txt')[0]
+        res['{}_{}'.format(o,n)] = np.genfromtxt(filename)
+
+# lmfit for N0 value
+def resid(params, P, x):
+    n = params['N0'].value
+    kid = lekid(T=0.14, Ql=1e7, N0=n)
+    kiddet = kid.fdet(kid.f0, P_opt=P)
+    res = x -(kiddet -kiddet[0])
+    return res
+
+dxdP = 7e7# Hz/W: estimate from data
+fbin = 5e4# Hz: freq bin (on each side)
+n0vals=[]
+for n in network:
+    kids = np.zeros((res['{}_{}'.format(obsnum[0], n)].shape[0], 5))
+    #qrdat = np.zeros_like(kids)
+    for i in range(obsnum.shape[0]):
+        file = res['{}_{}'.format(obsnum[i], n)]
+        predictkids = res['{}_{}'.format(obsnum[0], n)][:,6] +dxdP*(Pbb[0] -Pbb[i])*res['{}_{}'.format(obsnum[0], n)][:,6]
+        for j in range(predictkids.shape[0]):
+            w = np.where(np.abs(file[:,6] -predictkids[j])<fbin)[0]
+            if(w.shape[0]==0):# not found
+                kids[j][i] = -1.
+                #qrdat[j][i] = -1.
+            if(w.shape[0]==1):
+                kids[j][i] = file[w[0],6]
+                #qrdat[j][i] = file[w[0],4]
+            if(w.shape[0]>1):# multiples
+                kids[j][i] = -2.
+                #qrdat[j][i] = -2.
+    for k in kids:
+        if -1 in k or -2 in k:
+            pass
+        else:
+            params = lmfit.Parameters()
+            params.add('N0', value=1e46)
+            minner = lmfit.Minimizer(resid, params, fcn_args=(Pbb, (k[0] -k)/k[0]))
+            r = minner.minimize()
+            n0vals.append(r.params['N0'].value)
+            plt.plot(Pbb*1e12, (k[0] -k)/k[0], '.')
+n0vals=np.array(n0vals)
+plt.plot(popt*1e12, lekid(T=0.14).fdet(lekid(T=0.14).f0, popt))
+
+n0vals=[]
+for i in range(kids.shape[0]):
+    if -1 in kids[i] or -2 in kids[i]:
+        pass
+    else:
+        params = lmfit.Parameters()
+        params.add('N0', value=1e46)
+        minner = lmfit.Minimizer(resid, params, fcn_args=(Pbb, (kids[i,0] -kids[i])/kids[i,0]))
+        r = minner.minimize()
+        n0vals.append(r.params['N0'].value)
+n0vals=np.array(n0vals)

@@ -30,7 +30,8 @@ ax.set_xlabel('f/Hz')
 ax.set_ylabel('abs(S21)^2/dB')
 ax.set_title('abs(S21)^2 vs. f')
 #fig.legend()
-fig.colorbar(cmap)
+cb = fig.colorbar(cmap)
+cb.ax.set_title('T/K')
 
 #Utilities
 def rotateIQ(I, Q):
@@ -387,7 +388,8 @@ for i in range(np.unique(nc.variables['Data.Toltec.SweepFreq'][:].data).shape[0]
  
 # data from model fitting
 import glob
-network=0
+#network=0
+network = np.array([0,1,2,3,4])
 datadir='data/'
 files=glob.glob(datadir+'toltec'+str(network)+'_00_0000_005*.txt')
 files.sort()
@@ -407,20 +409,33 @@ obstemp = np.array([[5716,therm.variables['Data.ToltecThermetry.Temperature3'][:
 obstemp = obstemp[np.argsort(obstemp[:,1])]
 
 res={}
-for o in obsnum:
+for o in obstemp[:,0]:
     for n in network:
-        filename=glob.glob(datadir+'toltec'+str(n)+'_00'+str(o)+'_00_0000_*_vnasweep.txt')[0]
-        res['{}_{}'.format(o,n)] = np.genfromtxt(filename)
+        filename=glob.glob(datadir+'toltec'+str(n)+'_00'+str(int(o))+'_00_0000_*_vnasweep.txt')[0]
+        res['{}_{}'.format(int(o),n)] = np.genfromtxt(filename)
 
-dxdT = np.array([])# Hz/W: estimate from data
+norm = mpl.colors.Normalize(vmin=obstemp[:,1].min(), vmax=obstemp[:,1].max())
+cmap = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.plasma)
+cmap.set_array([])
+
+fig, ax = plt.subplots()
+for i in range(obstemp.shape[0]):
+    fs = res['{}_{}'.format(int(obstemp[i,0]), n)][:,6]
+    ax.plot(fs, obstemp[i,1]*np.ones_like(fs), '.', c=cmap.to_rgba(obstemp[i,1]))
+ax.set_xlim((6e8, 6.05e8))
+ax.set_xlabel('f/Hz')
+fig.colorbar(cmap)
+
+kid = lekid(T=obstemp[:,1])
+dsdT = 4*(kid.fdet(kid.f0) -kid.fdet(kid.f0)[0])# Hz/W: estimate from data
 fbin = 5e4# Hz: freq bin (on each side)
-n0vals=[]
+
 for n in network:
-    kids = np.zeros((res['{}_{}'.format(obsnum[0], n)].shape[0], 5))
+    kids = np.zeros((res['{}_{}'.format(int(obstemp[0,0]), n)].shape[0], 9))
     #qrdat = np.zeros_like(kids)
-    for i in range(obsnum.shape[0]):
-        file = res['{}_{}'.format(obsnum[i], n)]
-        predictkids = res['{}_{}'.format(obsnum[0], n)][:,6] +dxdT*(Pbb[0] -Pbb[i])*res['{}_{}'.format(obsnum[0], n)][:,6]
+    for i in range(obstemp.shape[0]):
+        file = res['{}_{}'.format(int(obstemp[i,0]), n)]
+        predictkids = res['{}_{}'.format(int(obstemp[0,0]), n)][:,6] +dsdT[i]*res['{}_{}'.format(int(obstemp[0,0]), n)][:,6]
         for j in range(predictkids.shape[0]):
             w = np.where(np.abs(file[:,6] -predictkids[j])<fbin)[0]
             if(w.shape[0]==0):# not found
@@ -460,19 +475,20 @@ for o in obsnum:
 def resid(params, P, x):
     n = params['N0'].value
     kid = lekid(T=0.14, Ql=1e7, N0=n)
-    kiddet = kid.fdet(kid.f0, P_opt=P)
+    kiddet = kid.ffrac(kid.f0, P_opt=P)
     res = x -(kiddet -kiddet[0])
     return res
 
-dxdP = 7e7# Hz/W: estimate from data
+dsdP = 7e7# Hz/W: estimate from data
 fbin = 5e4# Hz: freq bin (on each side)
 n0vals=[]
+allkids = []
 for n in network:
     kids = np.zeros((res['{}_{}'.format(obsnum[0], n)].shape[0], 5))
     #qrdat = np.zeros_like(kids)
     for i in range(obsnum.shape[0]):
         file = res['{}_{}'.format(obsnum[i], n)]
-        predictkids = res['{}_{}'.format(obsnum[0], n)][:,6] +dxdP*(Pbb[0] -Pbb[i])*res['{}_{}'.format(obsnum[0], n)][:,6]
+        predictkids = res['{}_{}'.format(obsnum[0], n)][:,6] +dsdP*(Pbb[0] -Pbb[i])*res['{}_{}'.format(obsnum[0], n)][:,6]
         for j in range(predictkids.shape[0]):
             w = np.where(np.abs(file[:,6] -predictkids[j])<fbin)[0]
             if(w.shape[0]==0):# not found
@@ -493,9 +509,14 @@ for n in network:
             minner = lmfit.Minimizer(resid, params, fcn_args=(Pbb, (k[0] -k)/k[0]))
             r = minner.minimize()
             n0vals.append(r.params['N0'].value)
-            plt.plot(Pbb*1e12, (k[0] -k)/k[0], '.')
+            #plt.plot(Pbb*1e12, (k[0] -k)/k[0], '.')
+            allkids.append(k)
+allkids=np.array(allkids)
+allshifts = np.array([allkids[:,0] -allkids[:,i] for i in range(allkids.shape[1])])/allkids[:,0]
 n0vals=np.array(n0vals)
-plt.plot(popt*1e12, lekid(T=0.14).fdet(lekid(T=0.14).f0, popt))
+kid = lekid(T=0.14, N0=n0vals.mean())
+plt.plot(popt[20:]*1e12, kid.ffrac(kid.f0, popt[20:]))
+
 
 n0vals=[]
 for i in range(kids.shape[0]):
@@ -508,3 +529,16 @@ for i in range(kids.shape[0]):
         r = minner.minimize()
         n0vals.append(r.params['N0'].value)
 n0vals=np.array(n0vals)
+
+# fitting N0 for mean of shifts
+def resid(params, P, x, xerr):
+    n = params['N0'].value
+    kid = lekid(T=0.14, N0=n)
+    kidfrac = kid.ffrac(kid.f0, P_opt=P)
+    res = np.sqrt((x -(kidfrac -kidfrac[0]))**2/xerr**2)[xerr!=0]
+    return res
+
+params = lmfit.Parameters()
+params.add('N0', value=1e46)
+minner = lmfit.Minimizer(resid, params, fcn_args=(Pbb, allshifts.mean(axis=1), allshifts.std(axis=1)))
+r = minner.minimize()

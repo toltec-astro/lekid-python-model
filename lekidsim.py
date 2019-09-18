@@ -37,7 +37,7 @@ class lekid(object):
                  Ql = 1e7, # loss quality factor
 #                 Lksq = 9e-11, # sheet kinetic inductance per square (Henry/square)
 #                 nqp0 = 1e20,# m^-3: baseline unloaded quasiparticle density of TiN
-                 N0 = 8.277e+46,# per Joule per metre cubed: single-spin density of electron states of TiN at Fermi energy
+                 N0 = 1.0150842996001764e+46,# per Joule per metre cubed: single-spin density of electron states of TiN at Fermi energy
 #                 Nsq = 5333.33, # Number of squares 
 #                 Lk_tot = 9.86e-9, # Total Kinetic Inductance (Henry)
                  f_read = 1e9, # Hertz: READOUT frequency of circuit
